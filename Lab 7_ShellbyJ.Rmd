@@ -1,0 +1,179 @@
+---
+title: "Lab- Week 7 (Cluster Analysis)"
+author: "Shellby Johnson"
+date: "February 20, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      warning = FALSE, 
+                      message = FALSE)
+```
+
+###Attach Packages:
+
+```{r}
+#Load necessary packages
+
+library(tidyverse)
+library(janitor)
+library(plotly)
+library(here)
+
+#### Packages for spatial stuff & point pattern analysis
+library(tmap)
+library(sf)
+library(spatstat)
+library(maptools)
+library(sp)
+
+#### Packages for cluster analysis:
+
+library(NbClust)
+library(cluster)
+library(factoextra)
+library(dendextend)
+library(ggdendro)
+
+
+```
+
+####Get Data
+
+Red tree voles in Humboldt County (little woodland creatures that look like hamsters)
+
+```{r}
+
+voles <- read_sf(dsn = here("data", "redtreevoledata"), 
+                 layer = "ds033") %>% 
+  dplyr::select(COUNTY) %>% 
+  dplyr::filter(COUNTY == "HUM") %>% 
+  st_transform(crs = 4326)
+
+st_crs(voles)
+
+plot(voles)
+
+## Read in data for Hunboldt County:
+
+humboldt <- read_sf(dsn = here("data", "redtreevoledata"),
+                    layer = "california_county_shape_file", crs = 4326) %>% 
+  filter(NAME == "Humboldt") %>% 
+  dplyr::select(NAME)
+
+#st_crs(humboldt)
+
+plot(humboldt)
+
+tm_shape(humboldt)+
+  tm_fill()+
+  tm_shape(voles)+
+  tm_dots(size = 0.3)
+
+#Geocomputation in R (Robin Lovelace) - Helpful book when starting spatial stuff in r
+
+ggplot()+
+  geom_sf(data = humboldt)+
+  geom_sf(data = voles)
+
+
+```
+
+Convert our vole events and humboldt polygon toa point pattern + window
+
+```{r}
+voles_sp <- as(voles, "Spatial")
+
+voles_ppp <- as(voles_sp, "ppp") #this is data that is now prepared to 
+
+#stopping here for now, since the ppp didn't work for alot of people in lab, so Allisona dn Jessica will troubleshoot and let us know
+
+```
+
+
+##Cluster Analysis
+
+###k-means
+
+```{r}
+
+iris_nice <- (iris) %>% 
+  clean_names()
+
+ggplot(data = iris_nice) +
+  geom_point(aes(x = petal_length, 
+                 y = petal_width, 
+                 color = species))
+
+#Asking R >>> How many clusters do you think there should be in this dataset??
+
+number_est <- NbClust(iris_nice[1:4], 
+                      min.nc = 2,#min and max number of clusters r should consider
+                      max.nc = 10,
+                      method = "kmeans")
+
+# Do kmeans:
+
+iris_km <- kmeans(iris_nice[1:4], 3)
+
+#Bind the cluster number together with the original data:
+
+iris_cl <- data.frame(iris_nice, cluster_no = factor(iris_km$cluster))
+
+ggplot(iris_cl) +
+  geom_point(aes(x = sepal_length, y = sepal_width, color = cluster_no))
+
+
+```
+
+
+
+```{r}
+
+plot_ly(x = iris_cl$petal_length, 
+        y = iris_cl$petal_width, 
+        z = iris_cl$sepal_width, 
+        type = "scatter3d", 
+        color = iris_cl$cluster_no, 
+        symbol = ~iris_cl$species,
+        marker = list(size = 3),
+        colors = "Set1")
+
+
+```
+
+####Hierarchichal Cluster Analysis
+
+- 'stats::hclust() - agglomerative hierarchical clustering
+- 'cluster::diana()' - divisive HC
+
+```{r}
+#Get Data
+wb_env <- read_csv(here("data", "wb_env.csv"))
+
+# Only keep top 20 greenhouse gas emitters (for simplifying visualization here...)
+wb_ghg_20 <- wb_env %>% 
+  arrange(-ghg) %>% 
+  head(20)
+
+wb_scales <- as.data.frame(scale(wb_ghg_20[3:7]))
+
+rownames(wb_scales) <- wb_ghg_20$name
+
+#Find distances (create a dissimilarity matrix)
+diss <- dist(wb_scales, method = "euclidean", upper = TRUE)
+
+#Use euclidean distances to do some comple agglomerative HC
+
+hc_complete <- hclust(diss, method = "complete" )
+
+# Plot it (base plot):
+plot(hc_complete, cex = 0.6, hang = -1)
+
+ggdendrogram(hc_complete, 
+             rotate = TRUE)+
+  theme_classic()+
+  labs(x = "Country")
+```
+
